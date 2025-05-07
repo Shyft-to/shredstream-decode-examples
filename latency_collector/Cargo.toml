@@ -1,0 +1,8 @@
+[package]
+name = "latency_collector"
+version = { workspace = true }
+description = "Latency collector"
+authors = { workspace = true }
+homepage = { workspace = true }
+edition = { workspace = true }
+publish = false

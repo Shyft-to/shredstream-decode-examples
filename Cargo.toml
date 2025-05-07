@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "latency_collector",
     "jito_protos",
     "."
 ]
@@ -21,8 +22,13 @@ edition = "2021"
 [dependencies]
 bincode = "1.3.3"
 jito-protos = { path = "./jito_protos" }
+latency_collector = { path = "./latency_collector" }
 solana-entry = "=2.2.1"
 tokio = { version = "1", features = ["full"] }
 tonic = { workspace = true, features = ["tls", "tls-roots", "tls-webpki-roots"] }
 clap = { version = "4.3.0", features = ["derive"] }
 env_logger = "0.11.3"
+futures = "0.3.31"
+reqwest = { version = "0.12.15", features = ["json"] }
+serde_json = "1.0.140"
+anyhow = { version = "1.0.98" }
