@@ -118,11 +118,25 @@ async fn connect_and_stream(
                     let rpc_url = rpc_url.to_string();
 
                     let task = tokio::spawn(async move {
-                        if let Ok(block_time) = get_block_time(&http_client, &rpc_url, slot).await {
-                            let mut collector = lc.lock().await;
-                            collector.collect_data(block_time, received_timestamp);
-                            let latency = received_timestamp - block_time;
-                            println!("Latency for slot {}: {} ms", slot, latency);
+                        match get_block_time(&http_client, &rpc_url, slot).await {
+                            Ok(block_time) => {
+                                let mut collector = lc.lock().await;
+                                collector.collect_data(block_time, received_timestamp);
+                                let latency = received_timestamp - block_time;
+                                println!("Latency for slot {}: {} ms", slot, latency);
+                            }
+                            Err(e) => {
+                                if e.to_string() == "Block not available for slot" {
+                                    let mut collector = lc.lock().await;
+                                    collector.collect_data(received_timestamp, received_timestamp);
+                                    println!(
+                                        "Assumed latency for slot {}: 0 ms (Block not available for slot)",
+                                        slot
+                                    );
+                                } else {
+                                    eprintln!("Failed to get block time for slot {}: {}", slot, e);
+                                }
+                            }
                         }
                     });
 
@@ -157,13 +171,30 @@ async fn get_block_time(client: &Client, rpc_url: &str, slot: u64) -> Result<u64
             "params": [slot]
         }))
         .send()
-        .await?
-        .json::<serde_json::Value>()
-        .await?;
+        .await;
 
-    if let Some(result) = response["result"].as_u64() {
-        Ok(result * 1000)
-    } else {
-        Err(anyhow!("Invalid response from getBlockTime"))
+    match response {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                let json_response = resp.json::<serde_json::Value>().await?;
+                if let Some(result) = json_response["result"].as_u64() {
+                    Ok(result * 1000)
+                } else if json_response["error"]["message"]
+                    == format!("Block not available for slot {}", slot)
+                {
+                    Err(anyhow::Error::msg("Block not available for slot"))
+                } else {
+                    Err(anyhow!(
+                        "Invalid response from getBlockTime: {}",
+                        json_response
+                    ))
+                }
+            } else {
+                let status = resp.status();
+                let text = resp.text().await?;
+                Err(anyhow!("HTTP error {}: {}", status, text))
+            }
+        }
+        Err(e) => Err(anyhow!("Request error: {}", e)),
     }
 }
