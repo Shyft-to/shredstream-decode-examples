@@ -110,7 +110,7 @@ async fn connect_and_stream(
                     let received_timestamp = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards")
-                        .as_millis() as u64;
+                        .as_millis() as i64;
 
                     let http_client = http_client.clone();
                     let slot = slot_entry.slot;
@@ -121,14 +121,18 @@ async fn connect_and_stream(
                         match get_block_time(&http_client, &rpc_url, slot).await {
                             Ok(block_time) => {
                                 let mut collector = lc.lock().await;
-                                collector.collect_data(block_time, received_timestamp);
+                                collector
+                                    .collect_data(block_time as u64, received_timestamp as u64);
                                 let latency = received_timestamp - block_time;
                                 println!("Latency for slot {}: {} ms", slot, latency);
                             }
                             Err(e) => {
                                 if e.to_string() == "Block not available for slot" {
                                     let mut collector = lc.lock().await;
-                                    collector.collect_data(received_timestamp, received_timestamp);
+                                    collector.collect_data(
+                                        received_timestamp as u64,
+                                        received_timestamp as u64,
+                                    );
                                     println!(
                                         "Assumed latency for slot {}: 0 ms (Block not available for slot)",
                                         slot
@@ -161,7 +165,7 @@ async fn connect_and_stream(
     Ok(())
 }
 
-async fn get_block_time(client: &Client, rpc_url: &str, slot: u64) -> Result<u64, anyhow::Error> {
+async fn get_block_time(client: &Client, rpc_url: &str, slot: u64) -> Result<i64, anyhow::Error> {
     let response = client
         .post(rpc_url)
         .json(&json!({
@@ -177,7 +181,7 @@ async fn get_block_time(client: &Client, rpc_url: &str, slot: u64) -> Result<u64
         Ok(resp) => {
             if resp.status().is_success() {
                 let json_response = resp.json::<serde_json::Value>().await?;
-                if let Some(result) = json_response["result"].as_u64() {
+                if let Some(result) = json_response["result"].as_i64() {
                     Ok(result * 1000)
                 } else if json_response["error"]["message"]
                     == format!("Block not available for slot {}", slot)
