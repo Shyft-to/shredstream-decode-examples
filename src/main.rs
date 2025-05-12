@@ -13,7 +13,7 @@ use {
 #[clap(author, version, about)]
 struct Args {
     #[clap(short, long, default_value_t = String::from("http://127.0.0.1:9999"))]
-    shredstream_proxy_uri: String,
+    shredstream_uri: String,
 
     #[clap(short, long)]
     x_token: Option<String>,
@@ -30,7 +30,7 @@ async fn main() -> Result<(), io::Error> {
     let args = Args::parse();
 
     loop {
-        match connect_and_stream(&args.shredstream_proxy_uri, args.x_token.as_deref()).await {
+        match connect_and_stream(&args.shredstream_uri, args.x_token.as_deref()).await {
             Ok(()) => {
                 println!("Stream ended gracefully. Reconnecting...");
             }
