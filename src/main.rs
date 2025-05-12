@@ -6,7 +6,7 @@ use {
     solana_entry::entry::Entry,
     std::{env, io, str::FromStr, time::Duration},
     tokio::time::sleep,
-    tonic::transport::Endpoint,
+    tonic::{metadata::MetadataValue, transport::Endpoint, Request},
 };
 
 #[derive(Debug, Clone, Parser)]
@@ -14,6 +14,9 @@ use {
 struct Args {
     #[clap(short, long, default_value_t = String::from("http://127.0.0.1:9999"))]
     shredstream_proxy_uri: String,
+
+    #[clap(short, long)]
+    x_token: Option<String>,
 }
 
 #[tokio::main]
@@ -27,7 +30,7 @@ async fn main() -> Result<(), io::Error> {
     let args = Args::parse();
 
     loop {
-        match connect_and_stream(&args.shredstream_proxy_uri).await {
+        match connect_and_stream(&args.shredstream_proxy_uri, args.x_token.as_deref()).await {
             Ok(()) => {
                 println!("Stream ended gracefully. Reconnecting...");
             }
@@ -40,7 +43,10 @@ async fn main() -> Result<(), io::Error> {
     }
 }
 
-async fn connect_and_stream(endpoint: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn connect_and_stream(
+    endpoint: &str,
+    x_token: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let endpoint = Endpoint::from_str(endpoint)?
         .keep_alive_while_idle(true)
         .http2_keep_alive_interval(Duration::from_secs(5))
@@ -51,10 +57,13 @@ async fn connect_and_stream(endpoint: &str) -> Result<(), Box<dyn std::error::Er
     let channel = endpoint.connect().await?;
     let mut client = ShredstreamProxyClient::new(channel);
 
-    let mut stream = client
-        .subscribe_entries(SubscribeEntriesRequest {})
-        .await?
-        .into_inner();
+    let mut request = Request::new(SubscribeEntriesRequest {});
+    if let Some(token) = x_token {
+        let metadata_value = MetadataValue::from_str(token)?;
+        request.metadata_mut().insert("x-token", metadata_value);
+    }
+
+    let mut stream = client.subscribe_entries(request).await?.into_inner();
 
     while let Some(result) = stream.message().await.transpose() {
         match result {
