@@ -6,15 +6,15 @@ members = [
 
 [workspace.package]
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
-homepage = "https://your-homepage.com"
+authors = ["Pintu Das <rex@shyft.to>"]
+homepage = "https://docs.shyft.to"
 version = "0.1.0"
 
 [workspace.dependencies]
 tonic = { version = "0.10" }
 
 [package]
-name = "jito-deshred"
+name = "shredstream-decode-examples"
 version = "0.1.0"
 edition = "2021"
 
@@ -26,3 +26,4 @@ tokio = { version = "1", features = ["full"] }
 tonic = { workspace = true, features = ["tls", "tls-roots", "tls-webpki-roots"] }
 clap = { version = "4.3.0", features = ["derive"] }
 env_logger = "0.11.3"
+solana-sdk = "=2.2.1"
