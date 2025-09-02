@@ -4,7 +4,8 @@ use {
         shredstream_proxy_client::ShredstreamProxyClient, SubscribeEntriesRequest,
     },
     solana_entry::entry::Entry,
-    std::{env, io, str::FromStr, time::Duration},
+    solana_sdk::pubkey::Pubkey,
+    std::{collections::HashSet, env, io, str::FromStr, time::Duration},
     tokio::time::sleep,
     tonic::{metadata::MetadataValue, transport::Endpoint, Request},
 };
@@ -17,6 +18,10 @@ struct Args {
 
     #[clap(short, long)]
     x_token: Option<String>,
+
+    /// Pubkeys to check, separated by spaces
+    #[clap(short, long, num_args = 1..)]
+    account_include: Option<Vec<String>>,
 }
 
 #[tokio::main]
@@ -29,8 +34,29 @@ async fn main() -> Result<(), io::Error> {
 
     let args = Args::parse();
 
+    let keys_set: Option<HashSet<Pubkey>> = if let Some(keys) = args.account_include {
+        let parsed: Result<Vec<Pubkey>, _> =
+            keys.into_iter().map(|k| Pubkey::from_str(&k)).collect();
+
+        match parsed {
+            Ok(pubkeys) => Some(pubkeys.into_iter().collect()),
+            Err(e) => {
+                eprintln!("Invalid pubkey in keys_to_check: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+
     loop {
-        match connect_and_stream(&args.shredstream_uri, args.x_token.as_deref()).await {
+        match connect_and_stream(
+            &args.shredstream_uri,
+            args.x_token.as_deref(),
+            keys_set.as_ref(),
+        )
+        .await
+        {
             Ok(()) => {
                 println!("Stream ended gracefully. Reconnecting...");
             }
@@ -46,6 +72,7 @@ async fn main() -> Result<(), io::Error> {
 async fn connect_and_stream(
     endpoint: &str,
     x_token: Option<&str>,
+    keys_set: Option<&HashSet<Pubkey>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let endpoint = Endpoint::from_str(endpoint)?
         .keep_alive_while_idle(true)
@@ -76,18 +103,29 @@ async fn connect_and_stream(
                     }
                 };
 
-                println!(
-                    "slot {}, entries: {}, transactions: {}",
-                    slot_entry.slot,
-                    entries.len(),
-                    entries.iter().map(|e| e.transactions.len()).sum::<usize>()
-                );
+                // println!(
+                //     "slot {}, entries: {}, transactions: {}",
+                //     slot_entry.slot,
+                //     entries.len(),
+                //     entries.iter().map(|e| e.transactions.len()).sum::<usize>()
+                // );
 
-                // entries.iter().for_each(|e| {
-                //     e.transactions.iter().for_each(|t| {
-                //         println!("Transaction: {:?}\n", t);
-                //     });
-                // });
+                entries.iter().for_each(|e| {
+                    e.transactions.iter().for_each(|t| {
+                        let accounts = t.message.static_account_keys();
+
+                        let should_print = match keys_set {
+                            // No keys provided → always print
+                            None => true,
+                            // Keys provided → print only if any matches
+                            Some(s) => accounts.iter().any(|key| s.contains(key)),
+                        };
+
+                        if should_print {
+                            println!("Transaction: {:?}\n", t);
+                        }
+                    });
+                });
             }
             Err(e) => {
                 eprintln!("stream error: {e}");
